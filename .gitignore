@@ -1,0 +1,14 @@
+# Ignorar arquivos de dependência (se usar Composer)
+vendor/
+
+# Ignorar arquivos de configuração com chaves secretas
+# NUNCA versione o arquivo com suas chaves reais!
+src/config.php
+
+# Ignorar arquivos de ambiente
+.env
+.env.local
+
+# Ignorar arquivos do sistema operacional
+.DS_Store
+Thumbs.db
