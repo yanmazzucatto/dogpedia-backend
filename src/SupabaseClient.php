@@ -1,31 +1,34 @@
 <?php
+// SupabaseClient.php
+
 require_once 'config.php';
 
 class SupabaseClient {
     private $baseUrl;
-    private $headers;
+    // Removendo $headers do estado do objeto para evitar vazamentos/conflitos entre requisições
+    private $defaultHeaders; 
 
     public function __construct() {
         $this->baseUrl = SUPABASE_URL . '/rest/v1/';
-        $this->headers = SUPABASE_HEADERS;
+        $this->defaultHeaders = SUPABASE_HEADERS;
     }
 
     /**
      * Executa uma requisição HTTP para a API do Supabase.
-     *
-     * @param string $method O método HTTP (GET, POST, PUT, DELETE).
-     * @param string $table O nome da tabela.
-     * @param array $data Os dados a serem enviados (para POST/PUT).
-     * @param string $query A string de query para filtros (ex: '?id=eq.1').
-     * @return array O resultado da requisição.
      */
-    private function request($method, $table, $data = [], $query = '') {
+    private function request($method, $table, $data = [], $query = '', $extraHeaders = []) {
         $url = $this->baseUrl . $table . $query;
         $ch = curl_init($url);
 
+        // Combina headers padrões com headers extra (como Prefer)
+        $headers = array_merge($this->defaultHeaders, $extraHeaders); 
+        
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $this->headers);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        
+        // Timeout para evitar que a requisição trave indefinidamente
+        curl_setopt($ch, CURLOPT_TIMEOUT, 15); 
 
         if (!empty($data)) {
             $json_data = json_encode($data);
@@ -45,7 +48,9 @@ class SupabaseClient {
         $decoded_response = json_decode($response, true);
 
         if ($http_code >= 400) {
-            return ['error' => 'API Error: ' . ($decoded_response['message'] ?? 'Unknown error'), 'code' => $http_code];
+            // Garante que a mensagem de erro do Supabase seja propagada
+            $message = $decoded_response['message'] ?? $decoded_response['msg'] ?? 'Unknown Supabase API error'; 
+            return ['error' => 'API Error: ' . $message, 'code' => $http_code];
         }
 
         return ['data' => $decoded_response, 'code' => $http_code];
@@ -53,68 +58,29 @@ class SupabaseClient {
 
     // --- Métodos CRUD ---
 
-    /**
-     * READ: Busca todos os registros ou um registro específico.
-     *
-     * @param string $table O nome da tabela.
-     * @param string $filter A string de filtro do PostgREST (ex: 'id=eq.1').
-     * @return array
-     */
     public function get($table, $filter = '') {
         $query = '?select=*';
         if (!empty($filter)) {
+            // Adiciona a cláusula WHERE para filtros mais complexos, se necessário.
             $query .= '&' . $filter;
         }
         return $this->request('GET', $table, [], $query);
     }
 
-    /**
-     * CREATE: Insere um novo registro.
-     *
-     * @param string $table O nome da tabela.
-     * @param array $data Os dados a serem inseridos.
-     * @return array
-     */
     public function post($table, $data) {
-        // Adiciona preferência para retornar o registro criado
-        $headers = $this->headers;
-        $headers[] = 'Prefer: return=representation';
-        $this->headers = $headers;
-        $result = $this->request('POST', $table, $data);
-        // Restaura os headers
-        array_pop($this->headers);
-        return $result;
+        $extraHeaders = ['Prefer: return=representation'];
+        return $this->request('POST', $table, $data, '', $extraHeaders);
     }
 
-    /**
-     * UPDATE: Atualiza um registro existente.
-     *
-     * @param string $table O nome da tabela.
-     * @param array $data Os dados a serem atualizados.
-     * @param string $filter O filtro para identificar o registro (ex: 'id=eq.1').
-     * @return array
-     */
     public function put($table, $data, $filter) {
         if (empty($filter)) {
             return ['error' => 'Filter is required for PUT operation.', 'code' => 400];
         }
-        // Adiciona preferência para retornar o registro atualizado
-        $headers = $this->headers;
-        $headers[] = 'Prefer: return=representation';
-        $this->headers = $headers;
-        $result = $this->request('PATCH', $table, $data, '?' . $filter); // Supabase usa PATCH para UPDATE
-        // Restaura os headers
-        array_pop($this->headers);
-        return $result;
+        $extraHeaders = ['Prefer: return=representation'];
+        // Supabase usa PATCH para atualizações
+        return $this->request('PATCH', $table, $data, '?' . $filter, $extraHeaders); 
     }
 
-    /**
-     * DELETE: Remove um registro.
-     *
-     * @param string $table O nome da tabela.
-     * @param string $filter O filtro para identificar o registro (ex: 'id=eq.1').
-     * @return array
-     */
     public function delete($table, $filter) {
         if (empty($filter)) {
             return ['error' => 'Filter is required for DELETE operation.', 'code' => 400];

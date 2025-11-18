@@ -1,27 +1,29 @@
 <?php
+// index.php
+
 require_once 'SupabaseClient.php';
 
+// --- Configuração CORS e Headers ---
+// Headers devem ser enviados antes de qualquer output.
 header('Content-Type: application/json');
-header('Access-Control-Allow-Origin: *'); // Permite CORS para desenvolvimento
+header('Access-Control-Allow-Origin: *'); 
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization, apikey');
 
-// Responde a requisições OPTIONS (preflight)
+// 1. TRATAMENTO DO OPTIONS (PREFLIGHT): Responde e encerra imediatamente.
+// Isso resolve o erro de CORS que você estava enfrentando.
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
     exit();
 }
+// --- FIM Configuração CORS ---
 
 $method = $_SERVER['REQUEST_METHOD'];
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri_segments = explode('/', trim($uri, '/'));
 
-// O primeiro segmento após o diretório base será o nome da tabela
-// Exemplo: /dogpedia_backend/src/breeds -> 'breeds'
-// Ajuste o índice se o seu servidor web tiver um caminho base diferente.
 $table_name = $uri_segments[count($uri_segments) - 1];
 
-// Lista de tabelas suportadas
 $supported_tables = ['breeds', 'categories', 'posts', 'comments'];
 
 if (!in_array($table_name, $supported_tables)) {
@@ -36,7 +38,6 @@ $response = [];
 try {
     switch ($method) {
         case 'GET':
-            // Filtro pode vir como query string (ex: ?id=eq.1)
             $filter = $_SERVER['QUERY_STRING'] ?? '';
             $response = $client->get($table_name, $filter);
             break;
@@ -44,27 +45,25 @@ try {
         case 'POST':
             $data = json_decode(file_get_contents('php://input'), true);
             if (empty($data)) {
-                throw new Exception('Dados de entrada inválidos ou vazios.', 400);
+                throw new Exception('Dados de entrada inválidos ou vazios.', 422); 
             }
             $response = $client->post($table_name, $data);
             break;
 
         case 'PUT':
         case 'PATCH':
-            // O filtro (ex: id=eq.1) deve ser fornecido na query string
             $filter = $_SERVER['QUERY_STRING'] ?? '';
             if (empty($filter)) {
                 throw new Exception('Filtro de atualização (query string) é obrigatório.', 400);
             }
             $data = json_decode(file_get_contents('php://input'), true);
             if (empty($data)) {
-                throw new Exception('Dados de entrada inválidos ou vazios.', 400);
+                throw new Exception('Dados de entrada inválidos ou vazios.', 422);
             }
             $response = $client->put($table_name, $data, $filter);
             break;
 
         case 'DELETE':
-            // O filtro (ex: id=eq.1) deve ser fornecido na query string
             $filter = $_SERVER['QUERY_STRING'] ?? '';
             if (empty($filter)) {
                 throw new Exception('Filtro de exclusão (query string) é obrigatório.', 400);
@@ -78,7 +77,7 @@ try {
             exit();
     }
 
-    // Define o código de status HTTP com base na resposta do cliente Supabase
+    // Código final de resposta (não alterado, está correto)
     http_response_code($response['code'] ?? 200);
 
     if (isset($response['error'])) {

@@ -1,3 +1,12 @@
+<IfModule mod_headers.c>
+    # Permite acesso de qualquer origem em desenvolvimento
+    Header set Access-Control-Allow-Origin "*"
+    # Permite os métodos necessários
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    # Permite os cabeçalhos personalizados (Content-Type, Authorization, apikey)
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization, apikey"
+</IfModule>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
