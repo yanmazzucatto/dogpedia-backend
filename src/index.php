@@ -21,9 +21,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $method = $_SERVER['REQUEST_METHOD'];
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri_segments = explode('/', trim($uri, '/'));
-
 $table_name = $uri_segments[count($uri_segments) - 1];
 
+$client = new SupabaseClient(); 
+
+// --- LÓGICA DE AUTH (ADICIONADO) ---
+if ($table_name === 'register' && $method === 'POST') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $response = $client->auth('register', $data);
+    http_response_code($response['code']);
+    echo json_encode($response['data'] ?? ['error' => $response['error']]);
+    exit();
+}
+
+if ($table_name === 'login' && $method === 'POST') {
+    $data = json_decode(file_get_contents('php://input'), true);
+    $response = $client->auth('login', $data);
+    http_response_code($response['code']);
+    echo json_encode($response['data'] ?? ['error' => $response['error']]);
+    exit();
+}
 $supported_tables = ['breeds', 'categories', 'posts', 'comments','profiles'];
 
 if (!in_array($table_name, $supported_tables)) {

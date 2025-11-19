@@ -13,6 +13,45 @@ class SupabaseClient {
         $this->defaultHeaders = SUPABASE_HEADERS;
     }
 
+public function auth($action, $data) {
+     // Muda a URL base para /auth/v1/
+     $authUrl = str_replace('/rest/v1/', '/auth/v1/', $this->baseUrl);
+     
+     $endpoint = '';
+     if ($action === 'register') {
+         $endpoint = 'signup';
+     } elseif ($action === 'login') {
+         $endpoint = 'token?grant_type=password';
+     }
+
+     $url = $authUrl . $endpoint;
+     
+     $ch = curl_init($url);
+     // Adiciona a chave de API
+     $headers = $this->defaultHeaders;
+     
+     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+     
+     $response = curl_exec($ch);
+     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+     
+     if (curl_errno($ch)) {
+          return ['error' => curl_error($ch), 'code' => 500];
+     }
+     curl_close($ch);
+
+     $decoded = json_decode($response, true);
+
+     if ($http_code >= 400) {
+         return ['error' => $decoded['msg'] ?? $decoded['error_description'] ?? 'Auth Error', 'code' => $http_code];
+     }
+
+     return ['data' => $decoded, 'code' => $http_code];
+ }
+
     /**
      * Executa uma requisição HTTP para a API do Supabase.
      */
@@ -20,15 +59,14 @@ class SupabaseClient {
         $url = $this->baseUrl . $table . $query;
         $ch = curl_init($url);
 
-        // Combina headers padrões com headers extra (como Prefer)
         $headers = array_merge($this->defaultHeaders, $extraHeaders); 
         
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
         
-        // Timeout para evitar que a requisição trave indefinidamente
-        curl_setopt($ch, CURLOPT_TIMEOUT, 15); 
+        
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300); 
 
         if (!empty($data)) {
             $json_data = json_encode($data);
@@ -81,10 +119,14 @@ class SupabaseClient {
         return $this->request('PATCH', $table, $data, '?' . $filter, $extraHeaders); 
     }
 
-    public function delete($table, $filter) {
-        if (empty($filter)) {
-            return ['error' => 'Filter is required for DELETE operation.', 'code' => 400];
-        }
-        return $this->request('DELETE', $table, [], '?' . $filter);
-    }
+public function delete($table, $filter) {
+           if (empty($filter)) {
+               return ['error' => 'Filter is required for DELETE operation.', 'code' => 400];
+           }
+           
+           // ADICIONADO: Força o Supabase a retornar o JSON do item deletado
+           $extraHeaders = ['Prefer: return=representation'];
+           
+           return $this->request('DELETE', $table, [], '?' . $filter, $extraHeaders);
+       }
 }
