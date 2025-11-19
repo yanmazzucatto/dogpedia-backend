@@ -12,7 +12,7 @@
 
     # Define o caminho base da sua API
     # IMPORTANTE: Isso deve bater com a sua URL
-    RewriteBase /dogpedia-backend/dogpedia-backend/src/
+    RewriteBase /dogpedia-backend/src/
 
     # Redireciona requisições que NÃO são arquivos ou pastas reais
     RewriteCond %{REQUEST_FILENAME} !-f

@@ -24,7 +24,7 @@ $uri_segments = explode('/', trim($uri, '/'));
 
 $table_name = $uri_segments[count($uri_segments) - 1];
 
-$supported_tables = ['breeds', 'categories', 'posts', 'comments'];
+$supported_tables = ['breeds', 'categories', 'posts', 'comments','profiles'];
 
 if (!in_array($table_name, $supported_tables)) {
     http_response_code(404);
