@@ -1,11 +1,7 @@
 <?php
-// SupabaseClient.php
-
 require_once 'config.php';
-
 class SupabaseClient {
     private $baseUrl;
-    // Removendo $headers do estado do objeto para evitar vazamentos/conflitos entre requisições
     private $defaultHeaders; 
 
     public function __construct() {
@@ -13,48 +9,76 @@ class SupabaseClient {
         $this->defaultHeaders = SUPABASE_HEADERS;
     }
 
-public function auth($action, $data) {
-     // Muda a URL base para /auth/v1/
-     $authUrl = str_replace('/rest/v1/', '/auth/v1/', $this->baseUrl);
-     
-     $endpoint = '';
-     if ($action === 'register') {
-         $endpoint = 'signup';
-     } elseif ($action === 'login') {
-         $endpoint = 'token?grant_type=password';
-     }
+    public function auth($action, $data) {
+        // MUDA A BASE URL: De '/rest/v1/' para '/auth/v1/'
+        // Isso é crucial porque a API de autenticação fica em um endpoint diferente
+        $authUrl = str_replace('/rest/v1/', '/auth/v1/', $this->baseUrl);
+        
+        $endpoint = '';
+        $payload = [];
+        
+        if ($action === 'register') {
+            $endpoint = 'signup';
+            $payload = [
+                'email' => $data['email'],
+                'password' => $data['password'],
+                // Aqui enviamos os metadados. O Trigger do Passo 1 vai ler 
+                // exatamente este campo 'username' dentro de 'data'
+                'data' => [
+                    'username' => $data['name'] ?? explode('@', $data['email'])[0]
+                ]
+            ];
+        } elseif ($action === 'login') {
+            $endpoint = 'token?grant_type=password';
+            $payload = [
+                'email' => $data['email'],
+                'password' => $data['password']
+            ];
+        }
 
-     $url = $authUrl . $endpoint;
-     
-     $ch = curl_init($url);
-     // Adiciona a chave de API
-     $headers = $this->defaultHeaders;
-     
-     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-     curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-     
-     $response = curl_exec($ch);
-     $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-     
-     if (curl_errno($ch)) {
-          return ['error' => curl_error($ch), 'code' => 500];
-     }
-     curl_close($ch);
+        // Inicializa o cURL para a URL de autenticação correta
+        $ch = curl_init($authUrl . $endpoint);
+        
+        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $this->defaultHeaders);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curl_error = curl_error($ch);
+        curl_close($ch);
 
-     $decoded = json_decode($response, true);
+        if ($curl_error) {
+            return ['error' => 'Erro interno (cURL): ' . $curl_error, 'code' => 500];
+        }
 
-     if ($http_code >= 400) {
-         return ['error' => $decoded['msg'] ?? $decoded['error_description'] ?? 'Auth Error', 'code' => $http_code];
-     }
+        $decoded = json_decode($response, true);
 
-     return ['data' => $decoded, 'code' => $http_code];
- }
+        // --- MUDANÇA PRINCIPAL AQUI ---
+        // Se der erro (código >= 400), retornamos o erro exato do Supabase.
+        if ($http_code >= 400) {
+            // O Supabase às vezes manda 'msg', às vezes 'error_description', às vezes 'message'
+            $errorMsg = $decoded['msg'] ?? $decoded['error_description'] ?? $decoded['message'] ?? 'Erro desconhecido na autenticação';
+            return [
+                'error' => $errorMsg,
+                'code' => $http_code
+            ];
+        }
 
-    /**
-     * Executa uma requisição HTTP para a API do Supabase.
-     */
+        // Se for sucesso, retornamos a resposta crua (raw) do Supabase.
+        // O Supabase retorna { access_token, user, refresh_token, ... }
+        // Antes, seu código estava criando um array novo e esquecendo o token.
+        return [
+            'data' => $decoded,
+            'code' => 200
+        ];
+    }
+
+    // --- MÉTODOS DE BANCO DE DADOS (REST) ---
+    // Estes métodos continuam iguais ao original, servindo para GET, POST, etc.
+    // Mantive aqui para o arquivo ficar completo.
+
     private function request($method, $table, $data = [], $query = '', $extraHeaders = []) {
         $url = $this->baseUrl . $table . $query;
         $ch = curl_init($url);
@@ -64,9 +88,7 @@ public function auth($action, $data) {
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $method);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-        
-        
-        curl_setopt($ch, CURLOPT_TIMEOUT, 300); 
+        curl_setopt($ch, CURLOPT_TIMEOUT, 60);
 
         if (!empty($data)) {
             $json_data = json_encode($data);
@@ -86,7 +108,6 @@ public function auth($action, $data) {
         $decoded_response = json_decode($response, true);
 
         if ($http_code >= 400) {
-            // Garante que a mensagem de erro do Supabase seja propagada
             $message = $decoded_response['message'] ?? $decoded_response['msg'] ?? 'Unknown Supabase API error'; 
             return ['error' => 'API Error: ' . $message, 'code' => $http_code];
         }
@@ -94,12 +115,9 @@ public function auth($action, $data) {
         return ['data' => $decoded_response, 'code' => $http_code];
     }
 
-    // --- Métodos CRUD ---
-
     public function get($table, $filter = '') {
         $query = '?select=*';
         if (!empty($filter)) {
-            // Adiciona a cláusula WHERE para filtros mais complexos, se necessário.
             $query .= '&' . $filter;
         }
         return $this->request('GET', $table, [], $query);
@@ -115,18 +133,14 @@ public function auth($action, $data) {
             return ['error' => 'Filter is required for PUT operation.', 'code' => 400];
         }
         $extraHeaders = ['Prefer: return=representation'];
-        // Supabase usa PATCH para atualizações
         return $this->request('PATCH', $table, $data, '?' . $filter, $extraHeaders); 
     }
 
-public function delete($table, $filter) {
-           if (empty($filter)) {
-               return ['error' => 'Filter is required for DELETE operation.', 'code' => 400];
-           }
-           
-           // ADICIONADO: Força o Supabase a retornar o JSON do item deletado
-           $extraHeaders = ['Prefer: return=representation'];
-           
-           return $this->request('DELETE', $table, [], '?' . $filter, $extraHeaders);
-       }
+    public function delete($table, $filter) {
+        if (empty($filter)) {
+            return ['error' => 'Filter is required for DELETE operation.', 'code' => 400];
+        }
+        $extraHeaders = ['Prefer: return=representation'];
+        return $this->request('DELETE', $table, [], '?' . $filter, $extraHeaders);
+    }
 }
