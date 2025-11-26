@@ -72,7 +72,7 @@ try {
     }
 
     // --- LÓGICA DE TABELAS (CRUD Padrão) ---
-    $supported_tables = ['breeds', 'categories', 'posts', 'comments', 'profiles'];
+    $supported_tables = ['breeds', 'categories', 'posts', 'comments', 'profiles', 'post_likes'];
 
     if (!in_array($table_name, $supported_tables)) {
         http_response_code(404);
@@ -113,6 +113,7 @@ try {
             echo json_encode(['error' => 'Método não permitido.']);
             exit();
     }
+    
 
     http_response_code($response['code'] ?? 200);
     echo json_encode(isset($response['error']) ? ['error' => $response['error']] : ($response['data'] ?? []));
